@@ -1,4 +1,4 @@
-## Functions used within the file "0 - wiki_ufcbouts_scrape.R"
+## Functions used within the file "0-wiki_ufcbouts.R"
 ## Web Scrape Functions ----
 ## getTables ----
 # ID the indices of specific tables within a page.
