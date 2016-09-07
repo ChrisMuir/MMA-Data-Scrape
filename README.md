@@ -16,3 +16,20 @@ Files
 in the UFC and has a Wikipedia page. Fighter details include: age, height, reach, wins/losses, nationality, team/camp association, etc.
 3. `wiki_ufcbouts_func_calls.R` houses all custom functions used in ufcbouts scrape file.
 4. `wiki_ufcfighters_func_calls.R` houses all custom functions used in ufcfighters scrape file.
+
+Instructions
+------------
+
+Save folder `mma_scrape` to your current working directory. There are two scrape files 
+(`0-wiki_ufcbouts.R` and `1-wiki_ufcfighters.R`), file `0` must be run prior to running 
+file `1`. The two function call files provide functions used for scraping and are 
+sourced at the top of each of the scrape files. The output of each scrape file is 
+a dataframe saved as an .RData file to the folder `mma_scrape`.
+
+Notes
+-----
+
+The majority of the code is performing text clean up, text extraction, tidying 
+variables and creating new variables. I'm planning on add more to this in the near future
+(scraping historical judging data for all MMA fights, merging of datasets, date specific
+scraping to allow for updating an existing scraped dataset).
