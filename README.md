@@ -5,8 +5,8 @@ Objective
 ---------
 
 The purpose of this project is to scrape historical MMA data on fights and fighters, 
-and clean up the data to make it as useful as possible. Project was written in R, 
-using package rvest for scraping.
+clean the data, and create new feature variables to make it as useful as possible. 
+Project was written in R, using package rvest for scraping.
 
 Files
 -----
@@ -30,6 +30,6 @@ Notes
 -----
 
 The majority of the code is performing text clean up, text extraction, tidying 
-variables and creating new variables. I'm planning on add more to this in the near future
+variables and creating new feature variables. I'm planning on add more to this in the near future
 (scraping historical judging data for all MMA fights, merging of datasets, date specific
 scraping to allow for updating an existing scraped dataset).
