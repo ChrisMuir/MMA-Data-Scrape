@@ -3,6 +3,8 @@
 ## utfConvert ----
 # Text encoding transformations from utf-8 to ACSII.
 utfConvert <- function(df, colnum) {
+  if (!is.data.frame(df)) {stop("input df is not a dataframe")}
+  if (!colnum %in% seq_len(ncol(df))) {stop("col index out of range")}
   x <- iconv(df[[colnum]], from="UTF-8", to="LATIN1")
   x <- iconv(x, to='ASCII//TRANSLIT')
   return(x)
@@ -71,7 +73,7 @@ getName <- function(df, linkCol, rowID, string) {
 }
 
 ## getDateFighters ----
-# Unpack and convert strings to birth date of the fighter.
+# Unpack and convert strings for birth date of the fighter.
 getDateFighters <- function(string) {
   output <- NA
   if (!is.na(string)) {
@@ -97,8 +99,9 @@ getDateFighters <- function(string) {
 
 ## getDivision ----
 # Two separate functions. getDivision attempts to lookup a fighters current
-# division within the df bouts. If that fails, getDivision2 attempts to ID 
-# the fighter's current division from the variable Division within fighters.
+# division within the df bouts (derived from file "0-wiki_ufcbouts.R"). 
+# If that fails, getDivision2 attempts to ID the fighter's current division 
+# from the variable Division within fighters.
 getDivision <- function(string) {
   divs <- bouts[which(bouts$FighterA == string | bouts$FighterB == string),'Weight']
   divs <- divs[!grepl("Catchweight", divs)]
@@ -177,8 +180,8 @@ getHeight <- function(string) {
 }
 
 ## getReach ----
-# For input "string", isolate the text string "xx.x in", remove everything 
-# but xx.x, then convert to numeric
+# Unpack and convert reach strings to reach in inches.
+# (Reach is a measure of wingspan, finger tip to finger tip).
 getReach <- function(string) {
   output <- NA
   if (!is.na(string) && grepl("^\\d\\d.* in", string)) {
@@ -194,7 +197,7 @@ getReach <- function(string) {
 }
 
 ## getWeight ----
-# For input "string", extract weight, then convert to numeric.
+# Unpack and convert weight strings to weight in lbs.
 getWeight <- function(string) {
   output <- NA
   if (!is.na(string)) {

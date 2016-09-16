@@ -82,7 +82,6 @@ getVenue <- function(htmltabl, tableID, index) {
 ## getLoc ----
 # Extract the city, state, country of each event.
 getLoc <- function(htmltabl, tableID, index) {
-  # Create vector of countries in which UFC events have taken place.
   cityVect <- vector()
   stateVect <- vector()
   countryVect <- vector()
@@ -195,7 +194,9 @@ toSeconds <- function (x) {
     }
   }))
 }
-
+# Combine output of func toSeconds with the round in which the fight ended to 
+# get the total fight time in seconds.
+# (This info will be used later to create a number of feature variables).
 boutSeconds <- function(time, round) {
   if (time == "" || is.na(time)) {
     output <- NA
