@@ -11,7 +11,7 @@ library(dplyr)
 library(stringr)
 library(tidyr)
 source("~/mma_scrape/wiki_ufcfighters_functions.R")
-load("~/mma_scrape/wiki_ufcbouts.RData")
+load("~/mma_scrape/0-wiki_ufcbouts.RData")
 
 # Start with object "fighterlinks", a vector of partial url strings that
 # that the wiki_ufcbouts scraper encountered while running.
