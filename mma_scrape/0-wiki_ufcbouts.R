@@ -8,7 +8,7 @@ library(rvest)
 library(dplyr)
 library(magrittr)
 library(stringr)
-source("~/mma_scrape/wiki_ufcbouts_func_calls.R")
+source("~/mma_scrape/wiki_ufcbouts_functions.R")
 
 # Pull html from wiki page of all UFC events.
 cards <- read_html("https://en.wikipedia.org/wiki/List_of_UFC_events")
@@ -21,16 +21,16 @@ cardlinks <- cards %>%
 
 # Remove links for fight events that were canceled and thus have no 
 # fight results.
-cardlinks <- cardlinks[!grepl("UFC_176|UFC_151", cardlinks)]
+cardlinks <- cardlinks[!grepl("UFC_176|UFC_151|Lamas_vs._Penn", cardlinks)]
 
 # Append each url string to form a complete url for each event.
 cardlinks <- unname(
   sapply(cardlinks, function(x) paste0("https://en.wikipedia.org", x)))
 
-# Create vector of all of the months of the year.
-months <- c("January ", "February ", "March ", "April ", 
-            "May ", "June ", "July ", "August ", "September ", 
-            "October ", "November ", "December ")
+# Create vector of all of the months of the year 
+# (with a single trailing space appended to each month).
+allMonths <- paste0(
+  months(seq.Date(as.Date("2015-01-01"), as.Date("2015-12-31"), "month")), " ")
 
 # Create vector of countries that have hosted UFC events.
 countries <- cards %>% 
@@ -60,7 +60,7 @@ for (i in cardlinks) {
                       html_nodes('.toccolours td a') %>% 
                       html_attr('href'))
   
-  # Extract all tables within page, then do control flow and NA checks.
+  # Extract all tables within page, then do NA checks.
   tables <- html %>% 
     html_nodes('table')
   # If tables is all NA's or empty, skip to the next iteration of cardlinks.
@@ -89,12 +89,11 @@ for (i in cardlinks) {
   # nameVect and edit resultsnum and infonum to delete the associated 
   # table index from those two vectors.
   nameVect <- getEventNames(tables, infonum)
-  for (w in nameVect) {
-    if (w %in% unique(bouts$Event)) {
-      nameVect <- nameVect[-grep(w, nameVect)]
-      resultsnum <- resultsnum[-grep(w, nameVect)]
-      infonum <- infonum[-grep(w, nameVect)]
-    }
+  if(any(nameVect %in% unique(bouts$Event))) {
+    id <- which(nameVect %in% unique(bouts$Event))
+    nameVect <- nameVect[-id]
+    resultsnum <- resultsnum[-id]
+    infonum <- infonum[-id]
   }
   
   # Check to make sure at least one table has been positively IDed.
@@ -113,7 +112,8 @@ for (i in cardlinks) {
   
   # Create holder df, which will house all scraped data for the events on
   # a single page, then rbind them to bouts df. 
-  holderdf <- appendDF(tables, resultsnum, nameVect, dateVect, venueVect, locVect)
+  holderdf <- appendDF(tables, resultsnum, nameVect, dateVect, venueVect, 
+                       locVect, i)
   bouts <- rbind(bouts, holderdf)
 }
 
@@ -125,17 +125,6 @@ options(warn = oldw)
 # Reset the row indices
 rownames(bouts) <- NULL
 
-# Normalize encoding for strings (to facilitate matching).
-# The raw non-US fighter/location strings are very messy.
-# Two step process for each variable, first step converts from utf-8 to LATIN1. 
-# Second step converts to ASCII//TRANSLIT, thereby eliminating accent marks.
-bouts$Weight <- utfConvert(bouts, 1)
-bouts$FighterA <- utfConvert(bouts, 2)
-bouts$FighterB <- utfConvert(bouts, 4)
-bouts$Event <- utfConvert(bouts, 9)
-bouts$Venue <- utfConvert(bouts, 11)
-bouts$City <- utfConvert(bouts, 12)
-
 # Eliminate all observations associated with future UFC events.
 bouts <- bouts[bouts$Result != "" & !is.na(bouts$Result), ]
 
@@ -144,32 +133,38 @@ bouts[bouts[sapply(bouts, is.character)] == "N/A" &
         !is.na(bouts[sapply(bouts, is.character)]), grep("N/A", bouts)] <- NA
 
 # Eliminate variable "Notes".
-bouts <- bouts[, -c(which(colnames(bouts)=="Notes"))]
+bouts <- bouts[, -c(which(colnames(bouts) == "Notes"))]
 
 # Create a new variable, "Belt". For all championship fights, record within 
 # Belt the winner, weight class, and whether it was for Interim or Championship.
 bouts$Belt <- NA
-for (i in seq_len(nrow(bouts))) {
-  if (grepl("\\(ic)", bouts$FighterA[i]) || 
-      grepl("\\(ic)", bouts$FighterB[i])) {
-    bouts$Belt[i] <- paste(
-      bouts$FighterA[i], bouts$Weight[i], "Interim", sep = ", ")
-  }
-  if (grepl("\\(c)|\\(UFC Champion)", bouts$FighterA[i]) || 
-      grepl("\\(c)|\\(UFC Champion)", bouts$FighterB[i])) {
-    bouts$Belt[i] <- paste(
-      bouts$FighterA[i], bouts$Weight[i], "Champion", sep = ", ")
-  }
-}
+# Interim
+id <- c(grep("\\(ic)", bouts$FighterA), 
+        grep("\\(ic)", bouts$FighterB)) %>% .[order(.)]
+bouts$Belt[id] <- paste(
+  bouts$FighterA[id], bouts$Weight[id], "Interim", sep = ", ")
+# Champion
+id <- c(grep("\\(c)|\\(UFC Champion)", bouts$FighterA), 
+        grep("\\(c)|\\(UFC Champion)", bouts$FighterB)) %>% .[order(.)]
+bouts$Belt[id] <- paste(
+  bouts$FighterA[id], bouts$Weight[id], "Champion", sep = ", ")
 
 # Eliminate all championship tags from strings within variables 
 # FighterA, FighterB, and Belt.
-bouts$FighterA <- strEliminate(
-  bouts, 2, " \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)")
-bouts$FighterB <- strEliminate(
-  bouts, 4, " \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)")
-bouts$Belt <- strEliminate(
-  bouts, 14, " \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)")
+id <- which(colnames(bouts) %in% c("FighterA", "FighterB", "Belt"))
+bouts[, id] <- lapply(
+  bouts[, id], function(x) 
+    gsub(" \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)", "", x))
+
+
+# Normalize encoding for strings (to facilitate matching).
+# The raw non-US fighter/location strings are very messy, and the application of 
+# accent marks is inconsistent. Two step process for each variable, first step 
+# converts from utf-8 to LATIN1. Second step converts to ASCII//TRANSLIT, 
+# thereby eliminating accent marks.
+id <- which(colnames(bouts) %in% c("Weight", "FighterA", "FighterB", "Event", 
+                                   "Venue", "City", "Belt"))
+bouts[, id] <- lapply(bouts[, id], function(x) utfConvert(x))
 
 # Add variable "TotalSeconds" showing total seconds of fight time for each bout.
 bouts$Round <- as.numeric(bouts$Round)
@@ -215,13 +210,17 @@ for (i in seq_len(nrow(bouts))) {
   }
 }
 
-# Clean up variables Result and Subresult by combining similar catigories of data
+# Clean up variables Result and Subresult by combining similar catigories of data.
 bouts[grepl("[Ss]ubmission", bouts$Result), ]$Result <- "Submission"
-bouts[grepl("dq|DQ", bouts$Result), ]$Result <- "Disqualification"
-bouts[bouts$Subresult == "rear naked choke" & 
-        !is.na(bouts$Subresult), ]$Subresult <- "rear-naked choke"
+if (any(grepl("dq|DQ", bouts$Result))) {
+  bouts[grepl("dq|DQ", bouts$Result), ]$Result <- "Disqualification"
+}
+if (!is.na(match("rear naked choke", bouts$Subresult))) {
+  bouts[bouts$Subresult == "rear naked choke" & 
+          !is.na(bouts$Subresult), ]$Subresult <- "rear-naked choke"
+}
 
-# Add variables for all types of over/under, ITD, and ended in r1-r5
+# Add variables for all types of over/under, ITD, and ended in r1-r5.
 # For these variables, r = "round", ITD = "inside the distance".
 id <- ncol(bouts)
 bouts$over1.5r <- ifelse(bouts$TotalSeconds > 450, 1, 0)
@@ -258,6 +257,7 @@ goodCols <- c("Weight",
               "State", 
               "Country", 
               "Belt",	
+              "wikilink", 
               "over1.5r",	
               "over2.5r",	
               "over3.5r",	

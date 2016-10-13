@@ -50,7 +50,7 @@ getDateBouts <- function(htmltabl, tableID) {
     dateindicate <- "A"
     if (length(dateindex) != 1) {
       datecomp <- vector()
-      for (x in months) {
+      for (x in allMonths) {
         datecomp <- c(datecomp, grep(x, infoVect))
       }
       dateindex <- unique(datecomp)
@@ -113,9 +113,11 @@ getLoc <- function(htmltabl, tableID, index) {
 
 
 ## appendDF ----
-# Extract fight results from a single event as a df, then append previously
-# extracted variables to that df, then rbind that df to the final output df (bouts).
-appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect, locVect) {
+# For each element of resultsnum, extract fight results from a single event as 
+# a df, then append previously extracted variables to that df, then rbind that 
+# df to the final output df.
+appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect, 
+                     locVect, i) {
   outputdf <- data_frame()
   for (k in seq_len(length(resultsnum))) {
     holder <- htmltabl %>% 
@@ -124,9 +126,10 @@ appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect, locVec
       as.data.frame(stringsAsFactors = FALSE)
     
     # Transformations to the fight outcomes table
-    holder <- holder[-c(1), ]
-    holder <- holder[(!is.na(holder[, 2]) & !is.na(holder[, 3])) & 
-                       (holder[, 2] != "" & holder[, 3] != ""), ]
+    holder <- holder %>% 
+      extract(!is.na(.[, 2]) & !is.na(.[, 3]), ) %>% 
+      extract(grepl("def", .[, 3]) | grepl("vs", .[, 3]), )
+    
     colnames(holder) <- c("Weight", "FighterA", "VS", "FighterB", 
                           "Result", "Round", "Time", "Notes")
     # Append event name.
@@ -146,12 +149,14 @@ appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect, locVec
         holder$Date <- NA
       }
     }
-    # append venue name
+    # Append venue name
     holder$Venue <- venueVect[k]
-    # Scrape city, state, and country
+    # Append city, state, and country
     holder$City <- locVect[[1]][k]
     holder$State <- locVect[[2]][k]
     holder$Country <- locVect[[3]][k]
+    # Append event wikipedia link
+    holder$wikilink <- i
     # rbind to 
     outputdf <- rbind(outputdf, holder)
   }
@@ -162,21 +167,10 @@ appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect, locVec
 ## Data Cleanup Functions ----
 ## utfConvert ----
 # Text encoding transformations from utf-8 to ACSII.
-utfConvert <- function(df, colnum) {
-  if (!is.data.frame(df)) {stop("input df is not a dataframe")}
-  if (!colnum %in% seq_len(ncol(df))) {stop("col index out of range")}
-  x <- iconv(df[[colnum]], from="UTF-8", to="LATIN1")
+utfConvert <- function(vect) {
+  if (!is.vector(vect)) {stop("input vect is not a vector")}
+  x <- iconv(vect, from="UTF-8", to="LATIN1")
   x <- iconv(x, to='ASCII//TRANSLIT')
-  return(x)
-}
-
-## strEliminate ----
-# Eliminate a string pattern within all elements of a character vector.
-strEliminate <- function(df, colnum, string) {
-  if (!is.data.frame(df)) {stop("input 'df' is not a dataframe")}
-  if (!colnum %in% seq_len(ncol(df))) {stop("'colnum' index out of range")}
-  if (length(string) > 1) {stop("parameter 'string' must be of length 1")}
-  x <- sapply(df[[colnum]], function(x) gsub(string, "", x))
   return(x)
 }
 
@@ -216,8 +210,6 @@ vectSplit <- function(string) {
     output <- list(mainresult = string, subresult = NA)
     return(output)
   }
-  mainresult <- vector()
-  subresult <- vector()
   x <- strsplit(string, "\\(")
   y <- trimws(x[[1]][1])
   z <- tolower(strsplit(x[[1]][2], "\\)")[[1]][1])

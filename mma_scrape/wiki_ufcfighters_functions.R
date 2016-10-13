@@ -17,15 +17,15 @@ mmaIso <- function(df, colnum) {
   # ID the index of the beginning of the fighters MMA w-l record.
   mmarec <- grep("^Mixed martial arts record$", df[[colnum]])
   # Create list of all strings seen within the MMA record.
-  key <- c("Total", "Wins", "By knockout", "By submission", "By decision", 
-           "Losses", "Draws", "By disqualification", "By DQ", "No contest", 
-           "No contests", "Unknown")
+  key <- c("Total", "Wins", "Losses", "By knockout", "By submission", 
+           "By decision", "Draws", "By disqualification", "By DQ", 
+           "No contest", "No contests", "Unknown")
   # Append the string "mma" to the strings in colnum for every row 
   # thats associated with the MMA record.
   while (mmarec > 0) {
     mmarec <- mmarec + 1
     df[[colnum]][mmarec] <- paste("mma", df[[colnum]][mmarec])
-    if (!df[[colnum]][mmarec+1] %in% key) {
+    if (!any(df[[colnum]][mmarec+1] == key)) {
       mmarec <- 0
     }
   }
@@ -35,8 +35,8 @@ mmaIso <- function(df, colnum) {
     paste(., collapse = "|")
   df <- df[!grepl(key, df[[colnum]]), ]
   # Eliminate the "mma" strings that we appended earlier in this function.
-  wins <- grep("mma Wins", df[[colnum]])
-  losses <- grep("mma Losses", df[[colnum]])
+  wins <- grep("^mma Wins$", df[[colnum]])
+  losses <- grep("^mma Losses$", df[[colnum]])
   if ((losses - wins) > 0) {
     for (n in (wins+1):(losses-1)) {
       df[[colnum]][n] <- str_replace(df[[colnum]][n], "mma", "Wins")
@@ -102,8 +102,8 @@ getDateFighters <- function(string) {
 # division within the df bouts (derived from file "0-wiki_ufcbouts.R"). 
 # If that fails, getDivision2 attempts to ID the fighter's current division 
 # from the variable Division within fighters.
-getDivision <- function(string) {
-  divs <- bouts[which(bouts$FighterA == string | bouts$FighterB == string),'Weight']
+getDivision <- function(string, bouts) {
+  divs <- bouts[which(bouts$FighterA == string | bouts$FighterB == string), 'Weight']
   divs <- divs[!grepl("Catchweight", divs)]
   if (any(!is.na(divs)) && length(divs) >= 1) {
     output <- divs[1]
@@ -152,14 +152,6 @@ getDivision2 <- function(string) {
     output <- NA
   }
   return(output)
-}
-
-## colIndex ----
-# Return the index of a column, given a column name and df.
-colIndex <- function(colname, df) {
-  string <- paste0("^", colname, "$")
-  x <- grep(string, colnames(df))
-  return(x)
 }
 
 ## getHeight ----
@@ -228,9 +220,8 @@ colRename <- function(df, currentName, newName) {
       warning (paste0(
         "col name ", "'", currentName[i], "'", " doesn't exist within dataframe"))
     } else {
-      colnames(df)[colIndex(currentName[i], df)] <- newName[i]
+      colnames(df)[which(colnames(df) == currentName[i])] <- newName[i]
     }
   }
   return(df)
 }
-
