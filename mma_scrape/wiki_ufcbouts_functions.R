@@ -17,6 +17,14 @@ getTables <- function(htmltabl) {
   return(output)
 }
 
+## utfConvert ----
+# Text encoding transformations from utf-8 to ACSII.
+utfConvert <- function(vect) {
+  if (!is.vector(vect)) {stop("input vect is not a vector")}
+  x <- iconv(vect, from="UTF-8", to="LATIN1")
+  x <- iconv(x, to='ASCII//TRANSLIT')
+  return(x)
+}
 
 ## getEventNames ----
 # Extract the event names of each card found on a page.
@@ -127,8 +135,8 @@ appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect,
     
     # Transformations to the fight outcomes table
     holder <- holder %>% 
-      extract(!is.na(.[, 2]) & !is.na(.[, 3]), ) %>% 
-      extract(grepl("def", .[, 3]) | grepl("vs", .[, 3]), )
+      magrittr::extract(!is.na(.[, 2]) & !is.na(.[, 3]), ) %>% 
+      magrittr::extract(grepl("def", .[, 3]) | grepl("vs", .[, 3]), )
     
     colnames(holder) <- c("Weight", "FighterA", "VS", "FighterB", 
                           "Result", "Round", "Time", "Notes")
@@ -165,15 +173,6 @@ appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect,
 
 
 ## Data Cleanup Functions ----
-## utfConvert ----
-# Text encoding transformations from utf-8 to ACSII.
-utfConvert <- function(vect) {
-  if (!is.vector(vect)) {stop("input vect is not a vector")}
-  x <- iconv(vect, from="UTF-8", to="LATIN1")
-  x <- iconv(x, to='ASCII//TRANSLIT')
-  return(x)
-}
-
 ## toSeconds & boutSeconds ----
 # Convert string with format "H:M:S" to seconds.
 toSeconds <- function (x) {
@@ -207,12 +206,12 @@ boutSeconds <- function(time, round) {
 # paranthesis found within the input string.
 vectSplit <- function(string) {
   if (!str_detect(string, "\\(")) {
-    output <- list(mainresult = string, subresult = NA)
+    output <- list(string, NA)
     return(output)
   }
   x <- strsplit(string, "\\(")
   y <- trimws(x[[1]][1])
   z <- tolower(strsplit(x[[1]][2], "\\)")[[1]][1])
-  output <- list(mainresult = y, subresult = z)
+  output <- list(y, z)
   return(output)
 }

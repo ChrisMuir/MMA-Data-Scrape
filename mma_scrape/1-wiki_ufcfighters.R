@@ -11,21 +11,21 @@ library(dplyr)
 library(stringr)
 library(tidyr)
 source("~/mma_scrape/wiki_ufcfighters_functions.R")
-load("~/mma_scrape/0-wiki_ufcbouts.RData")
+load("~/mma_scrape/0-ufc_bouts.RData")
 
-# Start with object "fighterlinks", a vector of partial url strings that
+# Start with object "fighterlinksvect", a vector of partial url strings that
 # that the wiki_ufcbouts scraper encountered while running.
 # Trim down to only keep unique values.
-fighterlinks <- unique(fighterlinks)
+fighterlinksvect <- unique(fighterlinksvect)
 
 # Eliminate specific string patterns.
 id <- !grepl("/wiki/[A-Z][A-Z][A-Z]_|cite_note|/w/index.php|/wiki/\\d\\d\\d\\d_", 
-            fighterlinks)
-fighterlinks <- fighterlinks[id]
+            fighterlinksvect)
+fighterlinksvect <- fighterlinksvect[id]
 
 # Append each url string to form a complete url for each fighter.
-fighterlinks <- unname(
-  sapply(fighterlinks, function(x) paste0("https://en.wikipedia.org", x)))
+fighterlinksvect <- unname(
+  sapply(fighterlinksvect, function(x) paste0("https://en.wikipedia.org", x)))
 
 ## Start the scraping ----
 ## Scraping is all contained within the for loop below.
@@ -33,11 +33,12 @@ fighterlinks <- unname(
 fighters <- data_frame()
 oldw <- getOption("warn")
 options(warn = -1)
-for (i in fighterlinks) {
+for (i in fighterlinksvect) {
   # Read html and extract all tables within the page.
   tables <- read_html(i) %>% 
     html_nodes('table')
-  if (is(tryCatch(html_table(tables, fill = TRUE), error=function(e) e), "error")) {
+  if (is(tryCatch(html_table(tables, fill = TRUE), error=function(e) e), 
+         "error")) {
     id <- vector()
     for (k in seq_len(length(tables))) {
       x <- tryCatch(html_table(tables[k], fill = TRUE), error=function(e) e)
@@ -91,7 +92,8 @@ for (i in fighterlinks) {
   # Use spread to transpose df fighter, such that all values in col1 are now 
   # headers, then use full_join to append it to the output df fighters.
   if(nrow(fighters) > 0) {
-    fighters <- suppressMessages(full_join(fighters, spread(holderdf, col1, col2)))
+    fighters <- suppressMessages(full_join(fighters, 
+                                           spread(holderdf, col1, col2)))
   } else if (any(grepl("^mma Total$", holderdf$col1))) {
     fighters <- spread(holderdf, col1, col2)
   }
@@ -125,14 +127,14 @@ fighters$Born <- as.Date(fighters$Born, origin = "1970-01-01")
 
 # For each fighter, differentiate between current division and all previous 
 # divisions. Achieve this by looking up the division of the fighter's most
-# recent UFC fight within df bouts, this value will be appended to new variable
+# recent UFC fight within boutsdf, this value will be appended to new variable
 # "current Division". The scraped variable "Division" within df fighters is a
 # compilation of all the divisions the fighter has ever fought in throughout
 # their MMA career.
 fighters$`Current Division` <- NA
-if (exists("bouts")) {
+if (exists("boutsdf")) {
   for (i in seq_len(nrow(fighters))) {
-    x <- getDivision(fighters$Name[i], bouts)
+    x <- getDivision(fighters$Name[i], boutsdf)
     if (is.na(x) || length(x) < 1) {
       x <- getDivision2(fighters$Name[i])
     }
@@ -182,8 +184,10 @@ if (any(colnames(fighters) == "Wins Losses")) {
 
 
 # Rename some of the variables.
-namesold <- c("mma Losses", "mma Wins", "mma Total", "Losses No contests", "mma Draws")
-namesnew <- c("Total Losses", "Total Wins", "Total Fights", "No Contest", "Draw")
+namesold <- c("mma Losses", "mma Wins", "mma Total", "Losses No contests", 
+              "mma Draws")
+namesnew <- c("Total Losses", "Total Wins", "Total Fights", "No Contest", 
+              "Draw")
 fighters <- colRename(fighters, namesold, namesnew)
 
 # Compile the names of the columns that we want to keep in a vector (goodCols), 
@@ -236,7 +240,8 @@ goodCols <- c("Name",
               "Occupation",	
               "Died")
 
-fighters <- subset(fighters, select = goodCols)
+fighters <- subset(fighters, select = goodCols) %>% 
+  arrange(fighters$Name)
 
 # For columns 3 - 17, replace all NA's with zeros, then convert to numeric.
 for (i in 3:17) {
@@ -250,5 +255,5 @@ for (i in 3:17) {
 fighters[, c(19, 20, 23)] <- lapply(
   fighters[, c(19, 20, 23)], function(x) as.double(x))
 
-# Save objects that will be sourced and used in other scripts within this repo.
+# Save fighters dataframe as an RData file within directory mma_scrape.
 save(fighters, file = "~/mma_scrape/1-ufc_fighters.RData")

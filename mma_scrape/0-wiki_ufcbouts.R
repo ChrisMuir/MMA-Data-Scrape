@@ -1,6 +1,6 @@
 ## Wiki UFC Fight Results Scraper.
 ## This will scrape the results of every UFC fight from Wikipedia.
-## Outputs are data_frame object "bouts", and vector "fightlinks".
+## Outputs are data_frame object "boutsdf", and vector "fighterlinksvect".
 
 ## Install packages and do some prep work ----
 # Read in required packages & files.
@@ -9,6 +9,10 @@ library(dplyr)
 library(magrittr)
 library(stringr)
 source("~/mma_scrape/wiki_ufcbouts_functions.R")
+datafile <- "~/mma_scrape/0-ufc_bouts.RData"
+if (file.exists(datafile)) {
+  load("~/mma_scrape/0-ufc_bouts.RData")
+}
 
 # Pull html from wiki page of all UFC events.
 cards <- read_html("https://en.wikipedia.org/wiki/List_of_UFC_events")
@@ -27,6 +31,14 @@ cardlinks <- cardlinks[!grepl("UFC_176|UFC_151|Lamas_vs._Penn", cardlinks)]
 cardlinks <- unname(
   sapply(cardlinks, function(x) paste0("https://en.wikipedia.org", x)))
 
+# If the wiki_ufcbouts DB already exists as an RData file, edit cardlinks to 
+# only include urls that do not appear in the existing wiki_ufcbouts DB 
+# (intention is to only scrape fight results that are new and haven't previously 
+# been scraped).
+if (file.exists(datafile)) {
+  cardlinks <- cardlinks[!cardlinks %in% unique(boutsdf$wikilink)]
+}
+
 # Create vector of all of the months of the year 
 # (with a single trailing space appended to each month).
 allMonths <- paste0(
@@ -38,8 +50,8 @@ countries <- cards %>%
   html_text() %>% 
   sapply(., function(x) tail(strsplit(x, ", ")[[1]], n=1)) %>% 
   unname() %>% 
-  unique() %>% 
-  c(., "England")
+  c(., "England") %>% 
+  unique()
 
 ## Start the scraping ----
 # Scraping is all contained within the for loop below.
@@ -88,9 +100,11 @@ for (i in cardlinks) {
   # already exist in the bouts df. If it does, then delete it from 
   # nameVect and edit resultsnum and infonum to delete the associated 
   # table index from those two vectors.
-  nameVect <- getEventNames(tables, infonum)
-  if(any(nameVect %in% unique(bouts$Event))) {
-    id <- which(nameVect %in% unique(bouts$Event))
+  nameVect <- getEventNames(tables, infonum) %>% 
+    sapply(., function(x) utfConvert(x)) %>% 
+    unname()
+  if(any(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))) {
+    id <- which(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))
     nameVect <- nameVect[-id]
     resultsnum <- resultsnum[-id]
     infonum <- infonum[-id]
@@ -122,6 +136,12 @@ options(warn = oldw)
 
 
 ## Transformations and Clean Up ----
+# If the wiki_ufcbouts DB already exists as an RData file, eliminate elements 
+# of the newly scraped fighterlinks that appear in fighterlinksvect.
+if (file.exists(datafile)) {
+  fighterlinks <- fighterlinks[!fighterlinks %in% unique(fighterlinksvect)]
+}
+
 # Reset the row indices
 rownames(bouts) <- NULL
 
@@ -130,7 +150,8 @@ bouts <- bouts[bouts$Result != "" & !is.na(bouts$Result), ]
 
 # Change all values of "N/A" and to be NA.
 bouts[bouts[sapply(bouts, is.character)] == "N/A" & 
-        !is.na(bouts[sapply(bouts, is.character)]), grep("N/A", bouts)] <- NA
+        !is.na(bouts[sapply(bouts, is.character)]), 
+      grep("N/A", bouts, fixed = TRUE)] <- NA
 
 # Eliminate variable "Notes".
 bouts <- bouts[, -c(which(colnames(bouts) == "Notes"))]
@@ -139,13 +160,15 @@ bouts <- bouts[, -c(which(colnames(bouts) == "Notes"))]
 # Belt the winner, weight class, and whether it was for Interim or Championship.
 bouts$Belt <- NA
 # Interim
-id <- c(grep("\\(ic)", bouts$FighterA), 
-        grep("\\(ic)", bouts$FighterB)) %>% .[order(.)]
+id <- c(grep("\\(ic)", bouts$FighterA, ignore.case = TRUE), 
+        grep("\\(ic)", bouts$FighterB, ignore.case = TRUE)) %>% 
+  .[order(.)]
 bouts$Belt[id] <- paste(
   bouts$FighterA[id], bouts$Weight[id], "Interim", sep = ", ")
 # Champion
-id <- c(grep("\\(c)|\\(UFC Champion)", bouts$FighterA), 
-        grep("\\(c)|\\(UFC Champion)", bouts$FighterB)) %>% .[order(.)]
+id <- c(grep("\\(c)|\\(UFC Champion)", bouts$FighterA, ignore.case = TRUE), 
+        grep("\\(c)|\\(UFC Champion)", bouts$FighterB, ignore.case = TRUE)) %>% 
+  .[order(.)]
 bouts$Belt[id] <- paste(
   bouts$FighterA[id], bouts$Weight[id], "Champion", sep = ", ")
 
@@ -154,10 +177,11 @@ bouts$Belt[id] <- paste(
 id <- which(colnames(bouts) %in% c("FighterA", "FighterB", "Belt"))
 bouts[, id] <- lapply(
   bouts[, id], function(x) 
-    gsub(" \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)", "", x))
+    gsub(" \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)", 
+         "", x, ignore.case = TRUE))
 
 
-# Normalize encoding for strings (to facilitate matching).
+# Specify encoding for strings (to facilitate matching).
 # The raw non-US fighter/location strings are very messy, and the application of 
 # accent marks is inconsistent. Two step process for each variable, first step 
 # converts from utf-8 to LATIN1. Second step converts to ASCII//TRANSLIT, 
@@ -167,19 +191,14 @@ id <- which(colnames(bouts) %in% c("Weight", "FighterA", "FighterB", "Event",
 bouts[, id] <- lapply(bouts[, id], function(x) utfConvert(x))
 
 # Add variable "TotalSeconds" showing total seconds of fight time for each bout.
-bouts$Round <- as.numeric(bouts$Round)
-bouts$TotalSeconds <- NA
-bouts$TotalSeconds <- unname(
-  apply(
-    bouts[, c('Time', 'Round')], 1, function(x) boutSeconds(x[1], as.double(x[2]))))
+bouts$Round <- as.double(bouts$Round)
+bouts$TotalSeconds <- mapply(function(x, y) 
+  boutSeconds(x, y), bouts$Time, bouts$Round, USE.NAMES = FALSE)
 
-# Split the results variable into two seperate variables ("Results" & "Subresult")
-bouts$Subresult <- NA
-for (i in seq_len(nrow(bouts))) {
-  x <- vectSplit(bouts$Result[i])
-  bouts$Result[i] <- x[[1]]
-  bouts$Subresult[i] <- x[[2]]
-}
+# Split results variable into two seperate variables ("Results" & "Subresult")
+rsltsplit <- unname(sapply(bouts$Result, function(x) vectSplit(x)))
+bouts$Result <- unlist(rsltsplit[1, ])
+bouts$Subresult <- unlist(rsltsplit[2, ])
 
 # For all fights that ended in a draw, edit variable subresult 
 # to include the word "draw".
@@ -198,26 +217,30 @@ for (i in seq_len(nrow(bouts))) {
 # unpack info from variable Result to fill in that NA gap.
 for (i in seq_len(nrow(bouts))) {
   if (is.na(bouts$Subresult[i]) && 
-      grepl("[Uu]nanimous|[Ss]plit|[Mm]ajority", bouts$Result[i])) {
+      grepl("unanimous|split|majority", bouts$Result[i], ignore.case = TRUE)) {
     holder <- unlist(strsplit(bouts$Result[i], " "))
-    if (any(grepl("[Dd]raw", holder)) && length(holder) > 1) {
+    if (any(grepl("draw", holder, ignore.case = TRUE, fixed = TRUE)) && 
+        length(holder) > 1) {
       bouts$Result[i] <- "Draw"
       bouts$Subresult[i] <- tolower(paste(holder[1], holder[2]))
-    } else if (any(grepl("[Dd]ecision", holder)) && length(holder) > 1) {
+    } else if (any(grepl("decision", holder, ignore.case = TRUE, fixed = TRUE)) && 
+               length(holder) > 1) {
       bouts$Result[i] <- "Decision"
       bouts$Subresult[i] <- tolower(holder[1])
     }
   }
 }
 
-# Clean up variables Result and Subresult by combining similar catigories of data.
-bouts[grepl("[Ss]ubmission", bouts$Result), ]$Result <- "Submission"
+# Clean up variables Result and Subresult by combining similar values.
+if (any(grepl("submission", bouts$Result, fixed = TRUE))) {
+  bouts[grepl("submission", bouts$Result, fixed = TRUE), ]$Result <- "Submission"
+}
 if (any(grepl("dq|DQ", bouts$Result))) {
   bouts[grepl("dq|DQ", bouts$Result), ]$Result <- "Disqualification"
 }
 if (!is.na(match("rear naked choke", bouts$Subresult))) {
-  bouts[bouts$Subresult == "rear naked choke" & 
-          !is.na(bouts$Subresult), ]$Subresult <- "rear-naked choke"
+  bouts[which(bouts$Subresult == "rear naked choke"), ]$Subresult <- 
+    "rear-naked choke"
 }
 
 # Add variables for all types of over/under, ITD, and ended in r1-r5.
@@ -230,45 +253,73 @@ bouts$over4.5r <- ifelse(bouts$TotalSeconds > 1350, 1, 0)
 bouts$ITD <- ifelse(
   !grepl("^Decision|Draw|No Contest", bouts$Result), 1, ifelse(
     grepl("No Contest", bouts$Result) & 
-      (bouts$TotalSeconds != 900 & bouts$TotalSeconds != 1500), 1, 0))
+      !bouts$TotalSeconds %in% c(900, 1500), 1, 0))
 bouts$r1Finish <- ifelse(bouts$Round == 1, 1, 0)
 bouts$r2Finish <- ifelse(bouts$Round == 2, 1, 0)
 bouts$r3Finish <- ifelse(bouts$ITD == 1 & bouts$Round == 3, 1, 0)
 bouts$r4Finish <- ifelse(bouts$Round == 4, 1, 0)
 bouts$r5Finish <- ifelse(bouts$ITD == 1 & bouts$Round == 5, 1, 0)
-bouts[bouts$Result == "No Contest" & bouts$Subresult != "overturned" & 
-        !is.na(bouts$Result) & !is.na(bouts$Subresult), (id + 1):ncol(bouts)] <- NA
+bouts[which(bouts$Result == "No Contest" & 
+              bouts$Subresult != "overturned"), (id + 1):ncol(bouts)] <- NA
 bouts[is.na(bouts$Round), (id + 1):ncol(bouts)] <- NA
 
-# Reorder the variables
-goodCols <- c("Weight", 
-              "FighterA",	
-              "VS",	
-              "FighterB",	
-              "Result",	
-              "Subresult", 
-              "Round", 
-              "Time",	
-              "TotalSeconds",	
-              "Event", 
-              "Date",	
-              "Venue", 
-              "City",	
-              "State", 
-              "Country", 
-              "Belt",	
-              "wikilink", 
-              "over1.5r",	
-              "over2.5r",	
-              "over3.5r",	
-              "over4.5r",	
-              "ITD", 
-              "r1Finish",	
-              "r2Finish",	
-              "r3Finish",	
-              "r4Finish",	
-              "r5Finish")
+# Reorder the variables, and eliminate unwanted variables.
+if (file.exists(datafile)) {
+  goodCols <- colnames(boutsdf)
+} else {
+  goodCols <- c("Weight", 
+                "FighterA",	
+                "VS",	
+                "FighterB",	
+                "Result",	
+                "Subresult", 
+                "Round", 
+                "Time",	
+                "TotalSeconds",	
+                "Event", 
+                "Date",	
+                "Venue", 
+                "City",	
+                "State", 
+                "Country", 
+                "Belt",	
+                "wikilink", 
+                "over1.5r",	
+                "over2.5r",	
+                "over3.5r",	
+                "over4.5r",	
+                "ITD", 
+                "r1Finish",	
+                "r2Finish",	
+                "r3Finish",	
+                "r4Finish",	
+                "r5Finish")
+}
 bouts <- subset(bouts, select = goodCols)
 
-# Save objects that will be sourced and used in other scripts within this repo.
-save(bouts, fighterlinks, file = "~/mma_scrape/0-ufc_bouts.RData")
+# If updating an existing UFC bouts dataset, remove any observations within the 
+# newly scraped data in which the event name appear in the existing UFC bouts 
+# dataset.
+if (file.exists(datafile)) {
+  bouts <- bouts[!bouts$Event %in% unique(boutsdf$Event), ]
+}
+
+## Write results to file ----
+# If UFC bouts dataset already exists in directory "mma_scrape", append the 
+# newly scraped results to objects "boutsdf" and "fighterlinksvect", then save 
+# both as an RData file.
+# Otherwise, save the newly scraped results as an RData file.
+# The RData file will be sourced at the top of R file "1-wiki_ufcfighters.R", 
+# and that file will make use of object "fighterlinksvect".
+if (!file.exists(datafile)) {
+  boutsdf <- bouts
+  fighterlinksvect <- fighterlinks
+  save(boutsdf, fighterlinksvect, file = "~/mma_scrape/0-ufc_bouts.RData")
+} else if (identical(colnames(bouts), colnames(boutsdf))) {
+  boutsdf <- rbind(bouts, boutsdf)
+  fighterlinksvect <- c(fighterlinks, fighterlinksvect)
+  save(boutsdf, fighterlinksvect, file = "~/mma_scrape/0-ufc_bouts.RData")
+} else {
+  writeLines(c("ERROR: rbind of new data with old data failed,", 
+               "columns of the two dataframes do not allign."))
+}

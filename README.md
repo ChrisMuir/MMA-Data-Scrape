@@ -11,7 +11,7 @@ Project was written in R, using package rvest for scraping.
 Files
 -----
 
-1. `0-wiki_ufcbouts.R` scrapes the results of every UFC fight from Wikipedia.
+1. `0-wiki_ufcbouts.R` scrapes the results of every UFC fight from Wikipedia (or updates an existing fight DB).
 2. `1-wiki_ufcfighters.R` scrapes the details of every fighter that has ever fought 
 in the UFC and has a Wikipedia page. Fighter details include: age, height, reach, wins/losses, nationality, team/camp association, etc.
 3. `wiki_ufcbouts_functions.R` houses all custom functions used in ufcbouts scrape file.
@@ -20,19 +20,22 @@ in the UFC and has a Wikipedia page. Fighter details include: age, height, reach
 Instructions
 ------------
 
-Unzip folder `mma_scrape` to your current working directory. There are two scrape files 
+Save folder `mma_scrape` to your current working directory. There are two scrape files 
 (`0-wiki_ufcbouts.R` and `1-wiki_ufcfighters.R`), file `0` must be run prior to running 
 file `1`. The two function files provide functions used for scraping and are 
 sourced at the top of each of the scrape files. The output of each scrape file is 
-a dataframe saved as an .RData file to the folder `mma_scrape`.
+a dataframe saved as an .RData file to the folder `mma_scrape`. If the ufcbouts scrape 
+file has been run in the past and the output .RData file exists in the directory `mma_scrape`, 
+then running ufcbouts again will ONLY scrape new fight records that have been added to 
+Wikipedia since the last time the script was run, appends the new records to the 
+boutsdf dataframe and saves it back to the same .RData file.
 
 Notes
 -----
 
 The majority of the code is performing text clean up, text extraction, tidying 
 variables and creating new feature variables. I'm planning on add more to this in the near future
-(scraping historical judging data for all MMA fights, merging of datasets, date specific
-scraping to allow for updating an existing scraped dataset).
+(scraping historical judging data for all MMA fights, merging of datasets).
 
 List of Variables Within the Output DF From Each Scrape File
 -------------
@@ -40,11 +43,11 @@ List of Variables Within the Output DF From Each Scrape File
 Bout Results File `0-wiki_ufcbouts.R`:
 
 ```r
-str(bouts)
+str(boutsdf)
 ```
 
 ```
-> str(bouts)
+> str(boutsdf)
 'data.frame':	3900 obs. of  27 variables:
  $ Weight      : chr  "Middleweight" "Middleweight" "Light Heavyweight" "Heavyweight" ...
  $ FighterA    : chr  "Michael Bisping" "Gegard Mousasi" "Jimi Manuwa" "Stefan Struve" ...

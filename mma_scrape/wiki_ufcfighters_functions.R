@@ -102,8 +102,9 @@ getDateFighters <- function(string) {
 # division within the df bouts (derived from file "0-wiki_ufcbouts.R"). 
 # If that fails, getDivision2 attempts to ID the fighter's current division 
 # from the variable Division within fighters.
-getDivision <- function(string, bouts) {
-  divs <- bouts[which(bouts$FighterA == string | bouts$FighterB == string), 'Weight']
+getDivision <- function(string, boutsdf) {
+  divs <- boutsdf[which(boutsdf$FighterA == string | 
+                          boutsdf$FighterB == string), 'Weight']
   divs <- divs[!grepl("Catchweight", divs)]
   if (any(!is.na(divs)) && length(divs) >= 1) {
     output <- divs[1]
@@ -117,7 +118,8 @@ getDivision2 <- function(string) {
   classes <- c("Super Heavyweight", "Heavyweight", "Light Heavyweight", 
                "Middleweight", "Welterweight", "Lightweight", "Featherweight", 
                "Bantamweight", "Flyweight", "Strawweight")
-  lbs <- c("265+", "265", "205", "185", "170", "155", "145", "135", "125", "115")
+  lbs <- c("265+", "265", "205", "185", "170", "155", "145", "135", "125", 
+           "115")
   output <- NA
   if (!is.na(string)) {
     if (grepl("\r\n|\n", string)) {
@@ -177,11 +179,14 @@ getHeight <- function(string) {
 getReach <- function(string) {
   output <- NA
   if (!is.na(string) && grepl("^\\d\\d.* in", string)) {
-    output <- unname(sapply(string, function(x) regmatches(x, regexpr("^\\d\\d.* in", x))))
+    output <- unname(
+      sapply(string, function(x) regmatches(x, regexpr("^\\d\\d.* in", x))))
     output <- as.double(strsplit(output, " ")[[1]][1])
   } else if (!is.na(string) && grepl("\\(\\d\\d.* in\\)", string)) {
-    output <- unname(sapply(string, function(x) regmatches(x, regexpr("\\(\\d\\d.* in\\)", x))))
-    output <- as.double(strsplit(str_extract(output, "\\d\\d.* in"), " ")[[1]][1])
+    output <- unname(
+      sapply(string, function(x) regmatches(x, regexpr("\\(\\d\\d.* in\\)", x))))
+    output <- as.double(
+      strsplit(str_extract(output, "\\d\\d.* in"), " ")[[1]][1])
   } else if (!is.na(string) && grepl("^\\d\\d.\\d$|^\\d\\d$", string)) {
     output <- as.double(string)
   }
@@ -206,10 +211,10 @@ getWeight <- function(string) {
 # attempt to apply newName[3] to the column of df that has currentName[3].
 colRename <- function(df, currentName, newName) {
   if (!is.data.frame(df)) {
-    stop ("Parameter df needs to be a dataframe")
+    stop ("'df' needs to be a dataframe")
   }
   if (length(currentName) != length(newName)) {
-    stop ("Parameter currentName and newName need to be the same length")
+    stop ("'currentName' and 'newName' need to be the same length")
   }
   if (length(currentName) < 1 || is.na(currentName) || 
       length(newName) < 1 || is.na(newName)) {
