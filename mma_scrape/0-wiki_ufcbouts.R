@@ -8,6 +8,7 @@ library(rvest)
 library(dplyr)
 library(magrittr)
 library(stringr)
+
 source("~/mma_scrape/wiki_ufcbouts_functions.R")
 datafile <- "~/mma_scrape/0-ufc_bouts.RData"
 if (file.exists(datafile)) {
@@ -15,7 +16,7 @@ if (file.exists(datafile)) {
 }
 
 # Pull html from wiki page of all UFC events.
-cards <- read_html("https://en.wikipedia.org/wiki/List_of_UFC_events")
+cards <- xml2::read_html("https://en.wikipedia.org/wiki/List_of_UFC_events")
 
 # Extract all url strings.
 cardlinks <- cards %>% 
@@ -65,7 +66,7 @@ bouts <- data_frame()
 fighterlinks <- vector()
 for (i in cardlinks) {
   # Read html of the specific fight card.
-  html <- read_html(i)
+  html <- xml2::read_html(i)
   
   # Record wiki links of all the fighters on the card.
   fighterlinks <- c(fighterlinks, html %>% 
@@ -141,6 +142,9 @@ options(warn = oldw)
 if (file.exists(datafile)) {
   fighterlinks <- fighterlinks[!fighterlinks %in% unique(fighterlinksvect)]
 }
+
+# Eliminate all "TBA" and "TBD" entries within fighterlinks.
+fighterlinks <- fighterlinks[!grepl("wiki/TBA|wiki/TBD", fighterlinks)]
 
 # Reset the row indices
 rownames(bouts) <- NULL

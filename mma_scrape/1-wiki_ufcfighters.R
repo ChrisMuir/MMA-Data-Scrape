@@ -35,10 +35,10 @@ oldw <- getOption("warn")
 options(warn = -1)
 for (i in fighterlinksvect) {
   # Read html and extract all tables within the page.
-  tables <- read_html(i) %>% 
+  tables <- xml2::read_html(i) %>% 
     html_nodes('table')
-  if (is(tryCatch(html_table(tables, fill = TRUE), error=function(e) e), 
-         "error")) {
+  if (is(tryCatch(html_table(tables, fill = TRUE), 
+                  error=function(e) e), "error")) {
     id <- vector()
     for (k in seq_len(length(tables))) {
       x <- tryCatch(html_table(tables[k], fill = TRUE), error=function(e) e)
@@ -92,8 +92,8 @@ for (i in fighterlinksvect) {
   # Use spread to transpose df fighter, such that all values in col1 are now 
   # headers, then use full_join to append it to the output df fighters.
   if(nrow(fighters) > 0) {
-    fighters <- suppressMessages(full_join(fighters, 
-                                           spread(holderdf, col1, col2)))
+    fighters <- suppressMessages(
+      full_join(fighters, spread(holderdf, col1, col2)))
   } else if (any(grepl("^mma Total$", holderdf$col1))) {
     fighters <- spread(holderdf, col1, col2)
   }
@@ -153,7 +153,7 @@ colnames(fighters)[which(colnames(fighters) == "Height")] <- "Height in Inches"
 # For each fighter, unpack and convert reach strings to reach in inches.
 fighters$Reach <- unname(
   sapply(fighters$Reach, function(x) getReach(x)))
-names(fighters)[which(colnames(fighters) == "Reach")] <- "Reach in Inches"
+colnames(fighters)[which(colnames(fighters) == "Reach")] <- "Reach in Inches"
 
 # For each fighter, unpack and convert weight strings to weight in lbs.
 fighters$Weight <- suppressWarnings(
@@ -241,7 +241,7 @@ goodCols <- c("Name",
               "Died")
 
 fighters <- subset(fighters, select = goodCols) %>% 
-  arrange(fighters$Name)
+  .[order(.$Name), ]
 
 # For columns 3 - 17, replace all NA's with zeros, then convert to numeric.
 for (i in 3:17) {
