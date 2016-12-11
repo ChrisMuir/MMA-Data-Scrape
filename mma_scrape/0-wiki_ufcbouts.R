@@ -104,11 +104,20 @@ for (i in cardlinks) {
   nameVect <- getEventNames(tables, infonum) %>% 
     sapply(., function(x) utfConvert(x)) %>% 
     unname()
-  if(any(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))) {
-    id <- which(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))
-    nameVect <- nameVect[-id]
-    resultsnum <- resultsnum[-id]
-    infonum <- infonum[-id]
+  if (file.exists(datafile)) {
+    if(any(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))) {
+      id <- which(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))
+      nameVect <- nameVect[-id]
+      resultsnum <- resultsnum[-id]
+      infonum <- infonum[-id]
+    }
+  } else {
+    if(any(nameVect %in% unique(bouts$Event))) {
+      id <- which(nameVect %in% unique(bouts$Event))
+      nameVect <- nameVect[-id]
+      resultsnum <- resultsnum[-id]
+      infonum <- infonum[-id]
+    }
   }
   
   # Check to make sure at least one table has been positively IDed.
