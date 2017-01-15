@@ -18,19 +18,16 @@ if (file.exists(datafile)) {
 # Pull html from wiki page of all UFC events.
 cards <- xml2::read_html("https://en.wikipedia.org/wiki/List_of_UFC_events")
 
-# Extract all url strings.
+# Extract all url strings, then append "wikipedia.org" to each string.
 cardlinks <- cards %>% 
   html_nodes('td:nth-child(2) a') %>% 
   html_attr('href') %>% 
-  unique()
+  unique() %>% 
+  paste0("https://en.wikipedia.org", .)
 
 # Remove links for fight events that were canceled and thus have no 
 # fight results.
 cardlinks <- cardlinks[!grepl("UFC_176|UFC_151|Lamas_vs._Penn", cardlinks)]
-
-# Append each url string to form a complete url for each event.
-cardlinks <- unname(
-  sapply(cardlinks, function(x) paste0("https://en.wikipedia.org", x)))
 
 # If the wiki_ufcbouts DB already exists as an RData file, edit cardlinks to 
 # only include urls that do not appear in the existing wiki_ufcbouts DB 
@@ -101,14 +98,33 @@ for (i in cardlinks) {
   # already exist in the bouts df. If it does, then delete it from 
   # nameVect and edit resultsnum and infonum to delete the associated 
   # table index from those two vectors.
+  # Additionally, if the event associated with i is in bouts df, use 
+  # approximate string matching to ID the event name from the url string, then 
+  # find that event within bouts df and replace the existing url with i.
   nameVect <- getEventNames(tables, infonum) %>% 
     sapply(., function(x) utfConvert(x)) %>% 
     unname()
-  if(any(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))) {
-    id <- which(nameVect %in% unique(c(bouts$Event, boutsdf$Event)))
-    nameVect <- nameVect[-id]
-    resultsnum <- resultsnum[-id]
-    infonum <- infonum[-id]
+  if (any(nameVect %in% unique(bouts$Event))) {
+    ids <- which(nameVect %in% unique(bouts$Event))
+  }
+  if (file.exists(datafile)) {
+    if (any(nameVect %in% unique(boutsdf$Event))) {
+      ids <- c(ids, which(nameVect %in% unique(boutsdf$Event)))
+    }
+  }
+  if (exists("ids")) {
+    # Reassign the url string within the obs of bouts that are associated with
+    # the event of the current iteration of i.
+    urlname <- strsplit(i, "wiki/", fixed = TRUE)[[1]][2] %>% 
+      gsub("_", " ", .)
+    ranks <- adist(urlname, nameVect, partial = TRUE, ignore.case = TRUE) %>% 
+      as.vector
+    bouts[bouts$Event == nameVect[which(ranks == min(ranks))], ]$wikilink <- i
+    # Delete elements that already exist within bouts or boutsdf.
+    nameVect <- nameVect[-ids]
+    resultsnum <- resultsnum[-ids]
+    infonum <- infonum[-ids]
+    rm(ids)
   }
   
   # Check to make sure at least one table has been positively IDed.
@@ -192,7 +208,7 @@ bouts[, id] <- lapply(
 # thereby eliminating accent marks.
 id <- which(colnames(bouts) %in% c("Weight", "FighterA", "FighterB", "Event", 
                                    "Venue", "City", "Belt"))
-bouts[, id] <- lapply(bouts[, id], function(x) utfConvert(x))
+bouts[, id] <- lapply(bouts[, id], utfConvert)
 
 # Add variable "TotalSeconds" showing total seconds of fight time for each bout.
 bouts$Round <- as.double(bouts$Round)
@@ -200,7 +216,7 @@ bouts$TotalSeconds <- mapply(function(x, y)
   boutSeconds(x, y), bouts$Time, bouts$Round, USE.NAMES = FALSE)
 
 # Split results variable into two seperate variables ("Results" & "Subresult")
-rsltsplit <- unname(sapply(bouts$Result, function(x) vectSplit(x)))
+rsltsplit <- unname(sapply(bouts$Result, vectSplit))
 bouts$Result <- unlist(rsltsplit[1, ])
 bouts$Subresult <- unlist(rsltsplit[2, ])
 
