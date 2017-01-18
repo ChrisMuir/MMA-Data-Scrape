@@ -109,7 +109,11 @@ for (i in cardlinks) {
   }
   if (file.exists(datafile)) {
     if (any(nameVect %in% unique(boutsdf$Event))) {
-      ids <- c(ids, which(nameVect %in% unique(boutsdf$Event)))
+      if (exists("ids")) {
+        ids <- c(ids, which(nameVect %in% unique(boutsdf$Event)))
+      } else {
+        ids <- which(nameVect %in% unique(boutsdf$Event))
+      }
     }
   }
   if (exists("ids")) {
@@ -119,7 +123,9 @@ for (i in cardlinks) {
       gsub("_", " ", .)
     ranks <- adist(urlname, nameVect, partial = TRUE, ignore.case = TRUE) %>% 
       as.vector
-    bouts[bouts$Event == nameVect[which(ranks == min(ranks))], ]$wikilink <- i
+    if (any(bouts$Event == nameVect[which(ranks == min(ranks))])) {
+      bouts[bouts$Event == nameVect[which(ranks == min(ranks))], ]$wikilink <- i
+    }
     # Delete elements that already exist within bouts or boutsdf.
     nameVect <- nameVect[-ids]
     resultsnum <- resultsnum[-ids]
@@ -176,39 +182,38 @@ bouts[bouts[sapply(bouts, is.character)] == "N/A" &
 # Eliminate variable "Notes".
 bouts <- bouts[, -c(which(colnames(bouts) == "Notes"))]
 
-# Create a new variable, "Belt". For all championship fights, record within 
-# Belt the winner, weight class, and whether it was for Interim or Championship.
-bouts$Belt <- NA
-# Interim
-id <- c(grep("\\(ic)", bouts$FighterA, ignore.case = TRUE), 
-        grep("\\(ic)", bouts$FighterB, ignore.case = TRUE)) %>% 
-  .[order(.)]
-bouts$Belt[id] <- paste(
-  bouts$FighterA[id], bouts$Weight[id], "Interim", sep = ", ")
-# Champion
-id <- c(grep("\\(c)|\\(UFC Champion)", bouts$FighterA, ignore.case = TRUE), 
-        grep("\\(c)|\\(UFC Champion)", bouts$FighterB, ignore.case = TRUE)) %>% 
-  .[order(.)]
-bouts$Belt[id] <- paste(
-  bouts$FighterA[id], bouts$Weight[id], "Champion", sep = ", ")
-
-# Eliminate all championship tags from strings within variables 
-# FighterA, FighterB, and Belt.
-id <- which(colnames(bouts) %in% c("FighterA", "FighterB", "Belt"))
-bouts[, id] <- lapply(
-  bouts[, id], function(x) 
-    gsub(" \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)", 
-         "", x, ignore.case = TRUE))
-
-
 # Specify encoding for strings (to facilitate matching).
 # The raw non-US fighter/location strings are very messy, and the application of 
 # accent marks is inconsistent. Two step process for each variable, first step 
 # converts from utf-8 to LATIN1. Second step converts to ASCII//TRANSLIT, 
 # thereby eliminating accent marks.
-id <- which(colnames(bouts) %in% c("Weight", "FighterA", "FighterB", "Event", 
-                                   "Venue", "City", "Belt"))
-bouts[, id] <- lapply(bouts[, id], utfConvert)
+ids <- which(colnames(bouts) %in% c("Weight", "FighterA", "FighterB", "Event", 
+                                    "Venue", "City"))
+bouts[, ids] <- lapply(bouts[, ids], utfConvert)
+
+# Create two new variables, "champPost" and "interimChampPost". Idea is that if 
+# a championship belt or an interim championship belt awarded as the result 
+# of a fight, the belt winners name will be appended to this variable.
+if (file.exists(datafile)) {
+  vects <- getInterimChampLabels(bouts, datafile = boutsdf)
+  bouts$interimChampPost <- vects[[1]]
+  boutsdf$interimChampPost <- vects[[2]]
+  vects <- getChampLabels(bouts, datafile = boutsdf)
+  bouts$champPost <- vects[[1]]
+  boutsdf$champPost <- vects[[2]]
+} else {
+  bouts$interimChampPost <- getInterimChampLabels(bouts)
+  bouts$champPost <- getChampLabels(bouts)
+}
+
+# Eliminate all championship tags from strings within variables 
+# FighterA, FighterB, champPost, and interimChampPost.
+ids <- which(colnames(bouts) %in% c("FighterA", "FighterB", "champPost", 
+                                    "interimChampPost"))
+bouts[, ids] <- lapply(
+  bouts[, ids], function(x) 
+    gsub(" \\(Fighter)| \\(c)| \\(ic)| \\(UFC Champion)| \\(Pride Champion)", 
+         "", x, ignore.case = TRUE))
 
 # Add variable "TotalSeconds" showing total seconds of fight time for each bout.
 bouts$Round <- as.double(bouts$Round)
@@ -265,7 +270,7 @@ if (!is.na(match("rear naked choke", bouts$Subresult))) {
 
 # Add variables for all types of over/under, ITD, and ended in r1-r5.
 # For these variables, r = "round", ITD = "inside the distance".
-id <- ncol(bouts)
+ids <- ncol(bouts)
 bouts$over1.5r <- ifelse(bouts$TotalSeconds > 450, 1, 0)
 bouts$over2.5r <- ifelse(bouts$TotalSeconds > 750, 1, 0)
 bouts$over3.5r <- ifelse(bouts$TotalSeconds > 1050, 1, 0)
@@ -280,8 +285,8 @@ bouts$r3Finish <- ifelse(bouts$ITD == 1 & bouts$Round == 3, 1, 0)
 bouts$r4Finish <- ifelse(bouts$Round == 4, 1, 0)
 bouts$r5Finish <- ifelse(bouts$ITD == 1 & bouts$Round == 5, 1, 0)
 bouts[which(bouts$Result == "No Contest" & 
-              bouts$Subresult != "overturned"), (id + 1):ncol(bouts)] <- NA
-bouts[is.na(bouts$Round), (id + 1):ncol(bouts)] <- NA
+              bouts$Subresult != "overturned"), (ids + 1):ncol(bouts)] <- NA
+bouts[is.na(bouts$Round), (ids + 1):ncol(bouts)] <- NA
 
 # Reorder the variables, and eliminate unwanted variables.
 if (file.exists(datafile)) {
@@ -302,7 +307,8 @@ if (file.exists(datafile)) {
                 "City",	
                 "State", 
                 "Country", 
-                "Belt",	
+                "champPost", 
+                "interimChampPost", 
                 "wikilink", 
                 "over1.5r",	
                 "over2.5r",	

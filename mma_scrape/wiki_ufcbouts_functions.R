@@ -3,6 +3,11 @@
 ## getTables ----
 # ID the indices of specific tables within a page.
 getTables <- function(htmltabl) {
+  # Params:
+  # htmltabl = list obj, elements of which are HTML tables.
+  # 
+  # Output is numeric vector indicating which tables within htmltabl are 
+  # relevant.
   output <- vector()
   for (n in seq_len(length(htmltabl))) {
     rawtabl <- html_table(htmltabl[n], fill = TRUE)
@@ -20,6 +25,10 @@ getTables <- function(htmltabl) {
 ## utfConvert ----
 # Text encoding transformations from utf-8 to ACSII.
 utfConvert <- function(vect) {
+  # Params:
+  # vect = character vector.
+  # 
+  # Output is character vector post encoding transformations.
   if (!is.vector(vect)) {stop("input vect is not a vector")}
   x <- iconv(vect, from="UTF-8", to="LATIN1")
   x <- iconv(x, to='ASCII//TRANSLIT')
@@ -29,6 +38,11 @@ utfConvert <- function(vect) {
 ## getEventNames ----
 # Extract the event names of each card found on a page.
 getEventNames <- function(htmltabl, tableID) {
+  # Params:
+  # htmltabl = list obj, elements of which are HTML tables.
+  # tableID = numeric vector, table indices.
+  #
+  # Output is vector of event names associated with the tables of htmltabl.
   output <- vector()
   for (t in tableID) {
     output <- c(output, htmltabl %>% 
@@ -43,9 +57,16 @@ getEventNames <- function(htmltabl, tableID) {
 
 ## getDate ----
 # Extract the dates that the events took place, record the index of the 
-# table within which the event date was found, and record and indication as to
+# table within which the event date was found, and record an indication as to
 # the format of the date.
 getDateBouts <- function(htmltabl, tableID) {
+  # Params:
+  # htmltabl = list obj, elements of which are HTML tables.
+  # tableID = numeric vector, table indices.
+  #
+  # Output is a list that contains the event dates, numeric index of the table 
+  # in which each date was found, and char string indicating the format of 
+  # the date string.
   dateVect <- vector()
   indexVect <- vector()
   indicateVect <- vector()
@@ -75,6 +96,12 @@ getDateBouts <- function(htmltabl, tableID) {
 ## getVenue ----
 # Extract the name of the venues.
 getVenue <- function(htmltabl, tableID, index) {
+  # Params:
+  # htmltabl = list obj, elements of which are HTML tables.
+  # tableID = numeric vector, table indices.
+  # index = numeric vector, table indices.
+  #
+  # Output is vector of event names.
   venueVect <- vector()
   for (t in seq_len(length(tableID))) {
     venueVect <- c(venueVect, htmltabl %>% 
@@ -90,6 +117,13 @@ getVenue <- function(htmltabl, tableID, index) {
 ## getLoc ----
 # Extract the city, state, country of each event.
 getLoc <- function(htmltabl, tableID, index) {
+  # Params:
+  # htmltabl = list obj, elements of which are HTML tables.
+  # tableID = numeric vector, table indices.
+  # index = numeric vector, table indices.
+  #
+  # Output is list containing vectors of city names, state names, and country 
+  # names.
   cityVect <- vector()
   stateVect <- vector()
   countryVect <- vector()
@@ -126,6 +160,17 @@ getLoc <- function(htmltabl, tableID, index) {
 # df to the final output df.
 appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect, 
                      locVect, i) {
+  # Params:
+  # htmltabl = list obj, elements of which are HTML tables.
+  # resultsnum = numeric vector, table indices.
+  # nameVect = char vector, event names.
+  # dateVect = list, events dates and date elements.
+  # venueVect = char vector, venue names.
+  # locVect = list, event locations.
+  # i = integer, current iteration of the for loop.
+  #
+  # Output is a tidy dataframe of event info related to the current loop 
+  # iteration.
   outputdf <- data_frame()
   for (k in seq_len(length(resultsnum))) {
     holder <- htmltabl %>% 
@@ -173,9 +218,159 @@ appendDF <- function(htmltabl, resultsnum, nameVect, dateVect, venueVect,
 
 
 ## Data Cleanup Functions ----
+## getInterimChampLabels ----
+# If an interim championship belt is awarded as the result of a fight, record 
+# the winners name in new variable.
+getInterimChampLabels <- function(bouts, datafile = NULL) {
+  # Params:
+  # bouts = dataframe of newly scraped data.
+  # datafile = loaded dataframe of previously scraped data, default is NULL.
+  #
+  # Output is vector of fighter names (interim belt winners).
+  if (!is.null(datafile)) {
+    FighterA <- c(bouts$FighterA, datafile$FighterA)
+    FighterB <- c(bouts$FighterB, datafile$FighterB)
+    Date <- c(bouts$Date, datafile$Date)
+    Weight <- c(bouts$Weight, datafile$Weight)
+    interimChampPost <- c(rep(NA, nrow(bouts)), datafile$interimChampPost)
+  } else {
+    FighterA <- bouts$FighterA
+    FighterB <- bouts$FighterB
+    Date <- bouts$Date
+    Weight <- bouts$Weight
+    interimChampPost <- rep(NA, nrow(bouts))
+  }
+  # id all obs indices in which an (ic) tag exists.
+  ids <- c(grep("\\(ic)", FighterA, ignore.case = TRUE), 
+           grep("\\(ic)", FighterB, ignore.case = TRUE)) %>% 
+    .[order(.)]
+  
+  # Make list of all fighters that have an (ic) tag, an ex of each list element:
+  # c("fighter", "fighter (ic)", "fighter (C)")
+  name <- lapply(ids, function(x) c(
+    c(FighterA[x], FighterB[x]) %>% 
+      .[grepl("\\(ic)", ., ignore.case = TRUE)] %>% 
+      gsub(" \\(ic)", "", ., ignore.case = TRUE), 
+    c(FighterA[x], FighterB[x]) %>% 
+      .[grepl("\\(ic)", ., ignore.case = TRUE)], 
+    c(FighterA[x], FighterB[x]) %>% 
+      .[grepl("\\(ic)", ., ignore.case = TRUE)] %>% 
+      gsub(" \\(ic)", " \\(c)", ., ignore.case = TRUE)
+  ))
+  
+  # For each obs that contains an (ic) tag, id the fighter that has it, and go 
+  # back to that fighters last fight and put fighters name in col interimChampPost.
+  # For each obs that contains (ic), if neither fighter has (c), then for the 
+  # fighter with the (ic) tag, put his/her name in col interimChampPost.
+  for (i in seq_len(length(ids))) {
+    # If no presence of "(c)", then add the (ic) fighters name to col 
+    # interimChampPost.
+    if (all(!grepl("\\(c)|\\(UFC Champion)", c(FighterA[ids[i]], FighterB[ids[i]]), 
+                   ignore.case = TRUE))) {
+      interimChampPost[ids[i]] <- FighterA[ids[i]]
+    }
+    # For the (ic) fighter, ID the win just prior to the current iter of ids.
+    icID <- which(FighterA %in% name[[i]] & Date < Date[ids[i]])[1]
+    if (is.na(icID)) {next}
+    # If the weightclass equals that of the current iter of ids, or either 
+    # weightclass is NA, or the weight of the win prior is catchweight, then 
+    # assign fighter in questions name to interimChampPost of the previous win.
+    if (any(is.na(c(Weight[ids[i]], Weight[icID]))) || 
+        Weight[ids[i]] == Weight[icID] || 
+        grepl("catchweight", Weight[icID], ignore.case = TRUE)) {
+      interimChampPost[icID] <- name[[i]][1]
+    }
+  }
+  # Output
+  if (!is.null(datafile)) {
+    splitpoint <- nrow(bouts)
+    boutsinterimChampPost <- interimChampPost[1:splitpoint]
+    datafileinterimChampPost <- interimChampPost[(splitpoint+1):length(interimChampPost)]
+    return(list(boutsinterimChampPost, datafileinterimChampPost))
+  } else {
+    return(interimChampPost)
+  }
+}
+
+
+## getChampLabels ----
+# If a championship belt is awarded as the result of a fight, record 
+# the winners name in new variable.
+getChampLabels <- function(bouts, datafile = NULL) {
+  # Params:
+  # bouts = dataframe of newly scraped data.
+  # datafile = loaded dataframe of previously scraped data, default is NULL.
+  #
+  # Output is vector of fighter names (championship belt winners).
+  if (!is.null(datafile)) {
+    FighterA <- c(bouts$FighterA, datafile$FighterA)
+    FighterB <- c(bouts$FighterB, datafile$FighterB)
+    Date <- c(bouts$Date, datafile$Date)
+    Weight <- c(bouts$Weight, datafile$Weight)
+    champPost <- c(rep(NA, nrow(bouts)), datafile$champPost)
+  } else {
+    FighterA <- bouts$FighterA
+    FighterB <- bouts$FighterB
+    Date <- bouts$Date
+    Weight <- bouts$Weight
+    champPost <- rep(NA, nrow(bouts))
+  }
+  
+  # id all obs indices in which a champion tag exists.
+  ids <- c(grep("\\(c)|\\(UFC Champion)", FighterA, ignore.case = TRUE), 
+           grep("\\(c)|\\(UFC Champion)", FighterB, ignore.case = TRUE)) %>% 
+    .[order(.)]
+  
+  # Make list of all fighters that have an (c) tag, an ex of each list element:
+  # c("fighter", "fighter (c)", "fighter (iC)")
+  name <- lapply(ids, function(x) c(
+    c(FighterA[x], FighterB[x]) %>% 
+      .[grepl("\\(c)|\\(UFC Champion)", ., ignore.case = TRUE)] %>% 
+      gsub(" \\(c)| \\(UFC Champion)", "", ., ignore.case = TRUE), 
+    c(FighterA[x], FighterB[x]) %>% 
+      .[grepl("\\(c)|\\(UFC Champion)", ., ignore.case = TRUE)], 
+    c(FighterA[x], FighterB[x]) %>% 
+      .[grepl("\\(c)|\\(UFC Champion)", ., ignore.case = TRUE)] %>% 
+      gsub(" \\(c)| \\(UFC Champion)", " \\(ic)", ., ignore.case = TRUE)
+  ))
+  
+  # For each obs that contains an (c) tag, id the fighter that has it, and go 
+  # back to that fighters last fight and put fighters name in col champPost.
+  # Also add bout winners name to col champPost of the current fight in question.
+  for (i in seq_len(length(ids))) {
+    # Add winner name of the fight to col champPost.
+    champPost[ids[i]] <- FighterA[ids[i]]
+    # For the (c) fighter, ID the win just prior to the current iter of ids.
+    cID <- which(FighterA %in% name[[i]] & Date < Date[ids[i]])[1]
+    if (is.na(cID)) {next}
+    # If the weightclass equals that of the current iter of ids, or either 
+    # weightclass is NA, or the weight of the win prior is catchweight, then 
+    # assign fighter in questions name to interimChampPost of the previous win.
+    if (any(is.na(c(Weight[ids[i]], Weight[cID]))) || 
+        Weight[ids[i]] == Weight[cID] || 
+        grepl("catchweight", Weight[cID], ignore.case = TRUE)) {
+      champPost[cID] <- name[[i]][1]
+    }
+  }
+  # Output
+  if (!is.null(datafile)) {
+    splitpoint <- nrow(bouts)
+    boutschampPost <- champPost[1:splitpoint]
+    datafilechampPost <- champPost[(splitpoint+1):length(champPost)]
+    return(list(boutschampPost, datafilechampPost))
+  } else {
+    return(champPost)
+  }
+}
+
+
 ## toSeconds & boutSeconds ----
 # Convert string with format "H:M:S" to seconds.
 toSeconds <- function (x) {
+  # Params:
+  # x = char string, format "H:M:S".
+  #
+  # Output is numeric value (time converted to seconds).
   unlist(lapply(x, function(i) {
     i <- as.numeric(strsplit(i, ':', fixed=TRUE)[[1]])
     if (length(i) == 3) {
@@ -191,6 +386,11 @@ toSeconds <- function (x) {
 # get the total fight time in seconds.
 # (This info will be used later to create a number of feature variables).
 boutSeconds <- function(time, round) {
+  # Params:
+  # time = char string, format "H:M:S".
+  # round = numeric value, rond in which the fight ended.
+  #
+  # Output is numeric value, total number of seconds a fight lasted.
   if (time == "" || is.na(time)) {
     output <- NA
   } else if (round == 1 || is.na(round)) {
@@ -205,6 +405,10 @@ boutSeconds <- function(time, round) {
 # Splits a character string into two separate strings, based on open and closed
 # paranthesis found within the input string.
 vectSplit <- function(string) {
+  # Params:
+  # string = char string.
+  #
+  # Output is a list, containing the input string split into two vectors.
   if (!str_detect(string, "\\(")) {
     output <- list(string, NA)
     return(output)
