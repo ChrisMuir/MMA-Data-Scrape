@@ -6,12 +6,13 @@
 
 ## Load packages and do some prep work ----
 # Read in required packages and files.
+devtools::install_github("ChrisMuir/refinr")
 library(rvest)
 library(dplyr)
 library(stringr)
 library(tidyr)
-source("~/mma_scrape/wiki_ufcfighters_functions.R")
-load("~/mma_scrape/0-ufc_bouts.RData")
+source("./mma_scrape/wiki_ufcfighters_functions.R")
+load("./mma_scrape/0-ufc_bouts.RData")
 
 # Start with object "fighterlinksvect", a vector of partial url strings that
 # that the wiki_ufcbouts scraper encountered while running.
@@ -19,13 +20,14 @@ load("~/mma_scrape/0-ufc_bouts.RData")
 fighterlinksvect <- unique(fighterlinksvect)
 
 # Eliminate specific string patterns.
-id <- !grepl("/wiki/[A-Z][A-Z][A-Z]_|cite_note|/w/index.php|/wiki/\\d\\d\\d\\d_", 
+ids <- !grepl("/wiki/[A-Z][A-Z][A-Z]_|cite_note|/w/index.php|/wiki/\\d\\d\\d\\d_", 
             fighterlinksvect)
-fighterlinksvect <- fighterlinksvect[id]
+fighterlinksvect <- fighterlinksvect[ids]
 
 # Append each url string to form a complete url for each fighter.
-fighterlinksvect <- unname(
-  sapply(fighterlinksvect, function(x) paste0("https://en.wikipedia.org", x)))
+fighterlinksvect <- sapply(
+  fighterlinksvect, function(x) paste0("https://en.wikipedia.org", x), 
+  USE.NAMES = FALSE)
 
 ## Start the scraping ----
 ## Scraping is all contained within the for loop below.
@@ -114,16 +116,18 @@ fighters <- as_data_frame(lapply(fighters, function(x) gsub("\\[.*\\]", "", x)))
 
 # For observations in which Name is NA, attempt to unpack the fighter name
 # from variable wikilink.
-for (i in seq_len(nrow(fighters))) {
-  if (is.na(fighters$Name[i])) {
-    fighters$Name[i] <- getName(fighters, "wikilink", i, fighters$Name[i])
+fighters$Name <- sapply(seq_len(nrow(fighters)), function(x) {
+  if (is.na(fighters$Name[x])) {
+    return(getName(fighters, "wikilink", x, fighters$Name[x]))
+  } else {
+    return(fighters$Name[x])
   }
-}
+}, USE.NAMES = FALSE)
 
 # Unpack and convert strings to birth date of the fighter within variable Born.
-fighters$Born <- unname(
-  sapply(fighters$Born, function(x) getDateFighters(x)))
-fighters$Born <- as.Date(fighters$Born, origin = "1970-01-01")
+fighters$Born <- fighters$Born %>% 
+  sapply(., function(x) getDateFighters(x), USE.NAMES = FALSE) %>% 
+  as.Date(., origin = "1970-01-01")
 
 # For each fighter, differentiate between current division and all previous 
 # divisions. Achieve this by looking up the division of the fighter's most
@@ -131,33 +135,30 @@ fighters$Born <- as.Date(fighters$Born, origin = "1970-01-01")
 # "current Division". The scraped variable "Division" within df fighters is a
 # compilation of all the divisions the fighter has ever fought in throughout
 # their MMA career.
-fighters$`Current Division` <- NA
 if (exists("boutsdf")) {
-  for (i in seq_len(nrow(fighters))) {
-    x <- getDivision(fighters$Name[i], boutsdf)
+  fighters$`Current Division` <- sapply(fighters$Name, function(i) {
+    x <- getDivision(i, boutsdf)
     if (is.na(x) || length(x) < 1) {
-      x <- getDivision2(fighters$Name[i])
+      x <- getDivision2(i)
     }
-    fighters$`Current Division`[i] <- x
-  }
+    return(x)
+  }, USE.NAMES = FALSE)
 } else {
-  x <- getDivision2(fighters$Name[i])
-  fighters$`Current Division`[i] <- x
+  fighters$`Current Division` <- sapply(fighters$Name, getDivision2, 
+                                        USE.NAMES = FALSE)
 }
 
 # For each fighter, unpack and convert height strings to height in inches.
-fighters$Height <- unname(
-  sapply(fighters$Height, function(x) getHeight(x)))
+fighters$Height <- sapply(fighters$Height, getHeight, USE.NAMES = FALSE)
 colnames(fighters)[which(colnames(fighters) == "Height")] <- "Height in Inches"
 
 # For each fighter, unpack and convert reach strings to reach in inches.
-fighters$Reach <- unname(
-  sapply(fighters$Reach, function(x) getReach(x)))
+fighters$Reach <- sapply(fighters$Reach, getReach, USE.NAMES = FALSE)
 colnames(fighters)[which(colnames(fighters) == "Reach")] <- "Reach in Inches"
 
 # For each fighter, unpack and convert weight strings to weight in lbs.
-fighters$Weight <- suppressWarnings(
-  unname(sapply(fighters$Weight, function(x) getWeight(x))))
+suppressWarnings(
+  fighters$Weight <- sapply(fighters$Weight, getWeight, USE.NAMES = FALSE))
 colnames(fighters)[which(colnames(fighters) == "Weight")] <- "Weight in Pounds"
 
 # Within all columns of df fighters, replace line-split text with a comma, 
@@ -255,5 +256,30 @@ for (i in 3:17) {
 fighters[, c(19, 20, 23)] <- lapply(
   fighters[, c(19, 20, 23)], function(x) as.double(x))
 
-# Save fighters dataframe as an RData file within directory mma_scrape.
-save(fighters, file = "~/mma_scrape/1-ufc_fighters.RData")
+# Additional text clean up. This step will merge values that are equivalent yet
+# have different strings, i.e. "James Te-Huna" and "James Te Huna". This step 
+# is applied to all fighter names across both fighters df and boutsdf, as well 
+# as variables Team, Other names, Rank, Fighting out of, Residence, Style, and 
+# Nationality. Once this step is complete, save objects fighters, boutsdf and 
+# fighterlinksvect to RData files.
+ids <- which(colnames(fighters) %in% c("Team", "Other names", "Rank", 
+                                      "Fighting out of", "Residence", "Style", 
+                                      "Nationality"))
+fighters[, ids] <- lapply(
+  fighters[, ids], function(x) {
+    x %>% 
+      {refinr::key_collision_merge(., bus_suffix = FALSE)} %>% 
+      {refinr::n_gram_merge(., bus_suffix = FALSE)}
+})
+if (exists("boutsdf")) {
+  dfs <- mergeFighterNames(fighters, boutsdf)
+  fighters <- dfs[["fighters"]]
+  boutsdf <- dfs[["boutsdf"]]
+  save(fighters, file = "./mma_scrape/1-utf_fighters.RData")
+  save(boutsdf, fighterlinksvect, file = "./mma_scrape/0-ufc_bouts.RData")
+} else {
+  fighters$Name <- fighters$Name %>% 
+    {refinr::key_collision_merge(., bus_suffix = FALSE)} %>% 
+    {refinr::n_gram_merge(., bus_suffix = FALSE)}
+  save(fighters, file = "./mma_scrape/1-utf_fighters.RData")
+}

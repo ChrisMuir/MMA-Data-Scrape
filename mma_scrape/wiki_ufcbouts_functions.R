@@ -419,3 +419,37 @@ vectSplit <- function(string) {
   output <- list(y, z)
   return(output)
 }
+
+## mergeNames ----
+# Goal is to do approximate string matching/merging for fighter names across all 
+# variables that include fighter names (FighterA, FighterB, interimChampPost 
+# and champPost). This function takes boutsdf as input, combines these four 
+# variables into a single char vector, performs clustering and merging of 
+# approximate values, then splits the single char vector back up and assigns 
+# each portion to its original position within boutsdf.
+mergeNames <- function(df) {
+  # Params:
+  # df = the boutsdf dataframe.
+  # 
+  # Output is boutsdf, but with approximate strings having been merged accross 
+  # four variables (FighterA, FighterB, interimChampPost and champPost).
+  all_fighters <- c(df$FighterA, 
+                    df$FighterB, 
+                    df$interimChampPost, 
+                    df$champPost)
+  
+  markers <- c(rep("FighterA", nrow(df)), 
+               rep("FighterB", nrow(df)), 
+               rep("interimChampPost", nrow(df)), 
+               rep("champPost", nrow(df)))
+  
+  all_fighters <- all_fighters %>% 
+    {refinr::key_collision_merge(., bus_suffix = FALSE)} %>% 
+    {refinr::n_gram_merge(., bus_suffix = FALSE)}
+  
+  df$FighterA <- all_fighters[markers == "FighterA"]
+  df$FighterB <- all_fighters[markers == "FighterB"]
+  df$interimChampPost <- all_fighters[markers == "interimChampPost"]
+  df$champPost <- all_fighters[markers == "champPost"]
+  return(df)
+}

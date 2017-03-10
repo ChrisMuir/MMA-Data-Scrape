@@ -63,10 +63,15 @@ getName <- function(df, linkCol, rowID, string) {
   if (!is.na(string)) {
     stop (paste0("Input string at row index ", rowID, " is not NA"))
   } else {
-    output <- tail(unlist(strsplit(df[[linkCol]][rowID], "/")), n = 1)
-    output <- gsub("_", " ", output)
+    output <- df[[linkCol]][rowID] %>% 
+      {strsplit(., "/")} %>% 
+      unlist %>% 
+      {tail(., n = 1)} %>% 
+      {gsub("_", " ", .)}
     if (str_detect(output, "\\(")) {
-      output <- trimws(gsub("\\(.*\\)", "", output))
+      output <- output %>% 
+        {gsub("\\(.*\\)", "", .)} %>% 
+        trimws
     }
   }
   return(output)
@@ -229,4 +234,27 @@ colRename <- function(df, currentName, newName) {
     }
   }
   return(df)
+}
+
+## mergeFighterNames ----
+# Goal is to do approximate string matching/merging for fighter names. Merging 
+# is done across the fighter names from the fighters df and the fighter names 
+# within the boutsdf.
+mergeFighterNames <- function(fightersdf, boutsdf) {
+  all_fighters <- c(boutsdf$FighterA, 
+                    boutsdf$FighterB, 
+                    fightersdf$Name)
+  
+  markers <- c(rep("FighterA", nrow(boutsdf)), 
+               rep("FighterB", nrow(boutsdf)), 
+               rep("Name", nrow(fightersdf)))
+  
+  all_fighters <- all_fighters %>% 
+    {refinr::key_collision_merge(., bus_suffix = FALSE)} %>% 
+    {refinr::n_gram_merge(., bus_suffix = FALSE)}
+  
+  boutsdf$FighterA <- all_fighters[markers == "FighterA"]
+  boutsdf$FighterB <- all_fighters[markers == "FighterB"]
+  fightersdf$Name <- all_fighters[markers == "Name"]
+  return(list(fighters = fightersdf, boutsdf = boutsdf))
 }

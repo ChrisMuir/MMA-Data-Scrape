@@ -4,16 +4,19 @@
 
 ## Install packages and do some prep work ----
 # Read in required packages & files.
+devtools::install_github("ChrisMuir/refinr")
 library(rvest)
 library(dplyr)
 library(magrittr)
 library(stringr)
 
-source("~/mma_scrape/wiki_ufcbouts_functions.R")
-datafile <- "~/mma_scrape/0-ufc_bouts.RData"
+source("./mma_scrape/wiki_ufcbouts_functions.R")
+datafile <- "./mma_scrape/0-ufc_bouts.RData"
 if (file.exists(datafile)) {
-  load("~/mma_scrape/0-ufc_bouts.RData")
+  load("./mma_scrape/0-ufc_bouts.RData")
 }
+
+boutsdf <- boutsdf[-c(1:44), ]
 
 # Pull html from wiki page of all UFC events.
 cards <- xml2::read_html("https://en.wikipedia.org/wiki/List_of_UFC_events")
@@ -221,7 +224,7 @@ bouts$TotalSeconds <- mapply(function(x, y)
   boutSeconds(x, y), bouts$Time, bouts$Round, USE.NAMES = FALSE)
 
 # Split results variable into two seperate variables ("Results" & "Subresult")
-rsltsplit <- unname(sapply(bouts$Result, vectSplit))
+rsltsplit <- sapply(bouts$Result, vectSplit, USE.NAMES = FALSE)
 bouts$Result <- unlist(rsltsplit[1, ])
 bouts$Subresult <- unlist(rsltsplit[2, ])
 
@@ -244,28 +247,16 @@ for (i in seq_len(nrow(bouts))) {
   if (is.na(bouts$Subresult[i]) && 
       grepl("unanimous|split|majority", bouts$Result[i], ignore.case = TRUE)) {
     holder <- unlist(strsplit(bouts$Result[i], " "))
-    if (any(grepl("draw", holder, ignore.case = TRUE, fixed = TRUE)) && 
+    if (any(grepl("draw", holder, ignore.case = TRUE)) && 
         length(holder) > 1) {
       bouts$Result[i] <- "Draw"
       bouts$Subresult[i] <- tolower(paste(holder[1], holder[2]))
-    } else if (any(grepl("decision", holder, ignore.case = TRUE, fixed = TRUE)) && 
+    } else if (any(grepl("decision", holder, ignore.case = TRUE)) && 
                length(holder) > 1) {
       bouts$Result[i] <- "Decision"
       bouts$Subresult[i] <- tolower(holder[1])
     }
   }
-}
-
-# Clean up variables Result and Subresult by combining similar values.
-if (any(grepl("submission", bouts$Result, fixed = TRUE))) {
-  bouts[grepl("submission", bouts$Result, fixed = TRUE), ]$Result <- "Submission"
-}
-if (any(grepl("dq|DQ", bouts$Result))) {
-  bouts[grepl("dq|DQ", bouts$Result), ]$Result <- "Disqualification"
-}
-if (!is.na(match("rear naked choke", bouts$Subresult))) {
-  bouts[which(bouts$Subresult == "rear naked choke"), ]$Subresult <- 
-    "rear-naked choke"
 }
 
 # Add variables for all types of over/under, ITD, and ended in r1-r5.
@@ -325,27 +316,39 @@ bouts <- subset(bouts, select = goodCols)
 
 # If updating an existing UFC bouts dataset, remove any observations within the 
 # newly scraped data in which the event name appear in the existing UFC bouts 
-# dataset.
+# dataset, then rbind the newly scraped data to the existing dataset.
 if (file.exists(datafile)) {
   bouts <- bouts[!bouts$Event %in% unique(boutsdf$Event), ]
-}
-
-## Write results to file ----
-# If UFC bouts dataset already exists in directory "mma_scrape", append the 
-# newly scraped results to objects "boutsdf" and "fighterlinksvect", then save 
-# both as an RData file.
-# Otherwise, save the newly scraped results as an RData file.
-# The RData file will be sourced at the top of R file "1-wiki_ufcfighters.R", 
-# and that file will make use of object "fighterlinksvect".
-if (!file.exists(datafile)) {
+  if (identical(colnames(bouts), colnames(boutsdf))) {
+    boutsdf <- rbind(bouts, boutsdf)
+    fighterlinksvect <- c(fighterlinks, fighterlinksvect)
+    rm(bouts, fighterlinks)
+  } else {
+    stop("rbind of the newly scraped data with the data in file ", 
+         "'~/mma_scrape/0-ufc_bouts.RData' failed, columns of the two ", 
+         "dataframes for not allign.")
+  }
+} else {
   boutsdf <- bouts
   fighterlinksvect <- fighterlinks
-  save(boutsdf, fighterlinksvect, file = "~/mma_scrape/0-ufc_bouts.RData")
-} else if (identical(colnames(bouts), colnames(boutsdf))) {
-  boutsdf <- rbind(bouts, boutsdf)
-  fighterlinksvect <- c(fighterlinks, fighterlinksvect)
-  save(boutsdf, fighterlinksvect, file = "~/mma_scrape/0-ufc_bouts.RData")
-} else {
-  writeLines(c("ERROR: rbind of new data with old data failed,", 
-               "columns of the two dataframes do not allign."))
+  rm(bouts, fighterlinks)
 }
+
+# Additional text clean up. This step will merge values that are equivalent yet
+# have different strings, i.e. "James Te-Huna" and "James Te Huna". This step 
+# is applied to all fighter names (as a single string), venue, city, result, 
+# and subresult.
+boutsdf <- mergeNames(boutsdf)
+ids <- which(colnames(boutsdf) %in% c("Venue", "City", "Result", "Subresult"))
+boutsdf[, ids] <- lapply(
+  boutsdf[, ids], function(x) {
+    x %>% 
+      {refinr::key_collision_merge(., bus_suffix = FALSE)} %>% 
+      {refinr::n_gram_merge(., bus_suffix = FALSE)}
+})
+
+## Write results to file ----
+# Save the scraped results as an RData file.
+# The RData file will be sourced at the top of R file "1-wiki_ufcfighters.R", 
+# and that file will make use of object "fighterlinksvect".
+save(boutsdf, fighterlinksvect, file = "./mma_scrape/0-ufc_bouts.RData")
