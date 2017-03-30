@@ -16,8 +16,6 @@ if (file.exists(datafile)) {
   load("./mma_scrape/0-ufc_bouts.RData")
 }
 
-boutsdf <- boutsdf[-c(1:44), ]
-
 # Pull html from wiki page of all UFC events.
 cards <- xml2::read_html("https://en.wikipedia.org/wiki/List_of_UFC_events")
 
@@ -336,8 +334,8 @@ if (file.exists(datafile)) {
 
 # Additional text clean up. This step will merge values that are equivalent yet
 # have different strings, i.e. "James Te-Huna" and "James Te Huna". This step 
-# is applied to all fighter names (as a single string), venue, city, result, 
-# and subresult.
+# is applied to all fighter names (as a single char vector), venue, city, 
+# result, and subresult.
 boutsdf <- mergeNames(boutsdf)
 ids <- which(colnames(boutsdf) %in% c("Venue", "City", "Result", "Subresult"))
 boutsdf[, ids] <- lapply(
