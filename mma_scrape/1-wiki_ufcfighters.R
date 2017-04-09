@@ -275,11 +275,11 @@ if (exists("boutsdf")) {
   dfs <- mergeFighterNames(fighters, boutsdf)
   fighters <- dfs[["fighters"]]
   boutsdf <- dfs[["boutsdf"]]
-  save(fighters, file = "./mma_scrape/1-utf_fighters.RData")
+  save(fighters, file = "./mma_scrape/1-ufc_fighters.RData")
   save(boutsdf, fighterlinksvect, file = "./mma_scrape/0-ufc_bouts.RData")
 } else {
   fighters$Name <- fighters$Name %>% 
     {refinr::key_collision_merge(., bus_suffix = FALSE)} %>% 
     {refinr::n_gram_merge(., bus_suffix = FALSE)}
-  save(fighters, file = "./mma_scrape/1-utf_fighters.RData")
+  save(fighters, file = "./mma_scrape/1-ufc_fighters.RData")
 }
